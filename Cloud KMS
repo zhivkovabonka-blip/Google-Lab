@@ -1,0 +1,95 @@
+Task 1: Configure Required Resources
+Bash
+# Set environment variables
+export REGION=europe-west4
+
+# Create a globally unique bucket
+gcloud storage buckets create --location=$REGION gs://$DEVSHELL_PROJECT_ID-kms
+
+# Create sample files for encryption testing
+echo "This is sample file 1" > file1.txt
+echo "This is sample file 2" > file2.txt
+echo "This is sample file 3" > file3.txt
+
+# Upload initial file (Google-managed encryption by default)
+gcloud storage cp file1.txt gs://$DEVSHELL_PROJECT_ID-kms
+
+# Enable the Cloud KMS API
+gcloud services enable cloudkms.googleapis.com
+Task 2: Create KeyRing and CryptoKeys
+Bash
+# Define Key naming conventions
+KEYRING_NAME=lab-keyring
+CRYPTOKEY_1_NAME=labkey-1
+CRYPTOKEY_2_NAME=labkey-2
+
+# Create the KeyRing
+gcloud kms keyrings create $KEYRING_NAME --location $REGION
+
+# Create CryptoKeys for encryption/decryption purposes
+gcloud kms keys create $CRYPTOKEY_1_NAME \
+    --location $REGION \
+    --keyring $KEYRING_NAME \
+    --purpose encryption
+
+gcloud kms keys create $CRYPTOKEY_2_NAME \
+    --location $REGION \
+    --keyring $KEYRING_NAME \
+    --purpose encryption
+Task 3: Set Default Bucket Encryption (CMEK)
+Bash
+# Authorize the Cloud Storage Service Account to use the keys
+gsutil kms authorize -p $DEVSHELL_PROJECT_ID -k \
+    projects/$DEVSHELL_PROJECT_ID/locations/$REGION/keyRings/$KEYRING_NAME/cryptoKeys/$CRYPTOKEY_1_NAME
+
+gsutil kms authorize -p $DEVSHELL_PROJECT_ID -k \
+    projects/$DEVSHELL_PROJECT_ID/locations/$REGION/keyRings/$KEYRING_NAME/cryptoKeys/$CRYPTOKEY_2_NAME
+
+# Assign labkey-1 as the default encryption key for the bucket
+gsutil kms encryption -k \
+    projects/$DEVSHELL_PROJECT_ID/locations/$REGION/keyRings/$KEYRING_NAME/cryptoKeys/$CRYPTOKEY_1_NAME \
+    gs://$DEVSHELL_PROJECT_ID-kms
+
+# Upload file2.txt (will be automatically encrypted with labkey-1)
+gcloud storage cp file2.txt gs://$DEVSHELL_PROJECT_ID-kms
+Task 4: Individual Object Encryption
+Bash
+# Manually override default encryption using labkey-2 for file3.txt
+gsutil -o "GSUtil:encryption_key=projects/$DEVSHELL_PROJECT_ID/locations/$REGION/keyRings/$KEYRING_NAME/cryptoKeys/$CRYPTOKEY_2_NAME" \
+    cp file3.txt gs://$DEVSHELL_PROJECT_ID-kms
+
+# Verify the encryption details
+gsutil ls -L gs://$DEVSHELL_PROJECT_ID-kms/file3.txt
+Task 5: Key Rotation Management
+Bash
+# 1. Automated Rotation: Set labkey-1 to rotate every 30 days
+gcloud kms keys update $CRYPTOKEY_1_NAME \
+    --location $REGION \
+    --keyring $KEYRING_NAME \
+    --rotation-period=2592000s \
+    --next-rotation-time=$(date -u -d "+30 days" +"%Y-%m-%dT%H:%M:%SZ")
+
+# 2. Manual Rotation: Generate a new primary version for labkey-2
+gcloud kms keys versions create \
+    --location $REGION \
+    --keyring $KEYRING_NAME \
+    --key=$CRYPTOKEY_2_NAME \
+    --primary
+Bonus: REST API Interaction
+Bash
+# Encode data to Base64
+PLAIN_TEXT=$(echo -n "Sensitive Data" | base64)
+
+# Encrypt via REST API
+curl "https://cloudkms.googleapis.com/v1/projects/$DEVSHELL_PROJECT_ID/locations/$REGION/keyRings/$KEYRING_NAME/cryptoKeys/$CRYPTOKEY_1_NAME:encrypt" \
+    -d "{\"plaintext\":\"$PLAIN_TEXT\"}" \
+    -H "Authorization:Bearer $(gcloud auth application-default print-access-token)" \
+    -H "Content-Type: application/json" \
+    | jq .ciphertext -r > data1.encrypted
+
+# Decrypt via REST API
+curl "https://cloudkms.googleapis.com/v1/projects/$DEVSHELL_PROJECT_ID/locations/$REGION/keyRings/$KEYRING_NAME/cryptoKeys/$CRYPTOKEY_1_NAME:decrypt" \
+    -d "{\"ciphertext\":\"$(cat data1.encrypted)\"}" \
+    -H "Authorization:Bearer $(gcloud auth application-default print-access-token)" \
+    -H "Content-Type:application/json" \
+    | jq .plaintext -r | base64 -d > data1.decrypted
