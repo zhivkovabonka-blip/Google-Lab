@@ -1,0 +1,51 @@
+Task 1 & 2: Infrastructure Setup
+Deploy the VM instance with a static external IP and appropriate firewall rules in the us-east4 region.
+
+Bash
+# Delete existing IP and recreate VM
+gcloud compute addresses delete xss-test-ip-address --region=us-east4 --quiet
+gcloud compute firewall-rules delete enable-wss-scan --quiet
+
+# Recreate static IP
+gcloud compute addresses create xss-test-ip-address --region=us-east4
+
+# Create VM Instance
+gcloud compute instances create xss-test-vm-instance \
+  --address=xss-test-ip-address --no-service-account \
+  --no-scopes --machine-type=e2-micro --zone=us-east4-b \
+  --metadata=startup-script='apt-get update; apt-get install -y python3-flask'
+
+# Create Firewall Rule for port 8080
+gcloud compute firewall-rules create enable-wss-scan \
+  --direction=INGRESS --priority=1000 \
+  --network=default --action=ALLOW \
+  --rules=tcp:8080 --source-ranges=0.0.0.0/0
+Task 3 & 4: Enable API and Deploy Application
+Enable the Web Security Scanner API and deploy the vulnerable code to the VM.
+
+Bash
+# Enable API
+gcloud services enable websecurityscanner.googleapis.com
+
+# Deploy vulnerable code via SSH
+gcloud compute ssh xss-test-vm-instance --zone=us-east4-b --quiet <<EOF
+gsutil cp gs://cloud-training/GCPSEC-ScannerAppEngine/flask_code.tar . && tar xvf flask_code.tar
+nohup python3 app.py > app.log 2>&1 &
+EOF
+Task 5: Vulnerability Remediation
+Apply a patch to app.py using sed to enable HTML escaping, then restart the application to verify the fix.
+
+Bash
+# Connect to VM and patch the code
+gcloud compute ssh xss-test-vm-instance --zone=us-east4-b
+
+# Inside SSH session:
+pkill -f "python3 app.py" || true
+sed -i 's/#  output_string = "".join/  output_string = "".join/' app.py
+sed -i 's/  output_string = input_string/  # output_string = input_string/' app.py
+grep "output_string" app.py
+nohup python3 app.py > app.log 2>&1 &
+exit
+
+# Final restart for verification
+gcloud compute ssh xss-test-vm-instance --zone=us-east4-b --command="python3 app.py"
