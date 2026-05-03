@@ -1,0 +1,88 @@
+---
+
+## Code Logic Explanation (English)
+
+If you need to explain **how the script works** in a technical interview or a "Code Explanation" section, use these points:
+
+### 1. Storage Initialization
+The script uses the modern `gcloud storage` CLI. It creates a bucket in a specific region (`us-east1`) and disables **Uniform Bucket-Level Access** to allow for fine-grained IAM permissions. This is necessary for making specific objects public while keeping the bucket structure flexible.
+
+### 2. IAM & Object Management
+Instead of using legacy ACLs, the script uses `add-iam-policy-binding`. It assigns the `roles/storage.objectViewer` role to `allUsers`. This makes the `google.png` file accessible to the entire internet, which is a prerequisite for testing CDN delivery.
+
+### 3. Load Balancing Stack
+The script builds the stack from the bottom up:
+*   **Backend Bucket**: Links the storage to the LB and enables CDN.
+*   **URL Map**: Acts as the "brain," routing incoming traffic to the backend.
+*   **Target Proxy**: Receives the request from the frontend and passes it to the URL map.
+*   **Forwarding Rule**: Reserved a Global External IP and opens Port 80.
+
+### 4. Edge Security Enforcement
+This is the most critical part. The script creates a policy of type `CLOUD_ARMOR_EDGE`. 
+*   **Rule 2147483647**: This is the default "catch-all" rule. By updating it to `deny-403`, we ensure that all traffic is blocked by default at the edge.
+*   **Attachment**: The policy is attached specifically using the `--edge-security-policy` flag on the backend bucket.
+
+---
+
+## Final Automation Script (Pure English)
+
+```bash
+#!/bin/bash
+# GCP CDN and Cloud Armor Automation Script
+
+# 1. Configuration
+export BUCKET=qwiklabs-gcp-04-4386d329a120
+export PROJECT_ID=$(gcloud config get-value project)
+
+echo "Starting deployment for Project: $PROJECT_ID..."
+
+# 2. Storage Setup
+gcloud storage buckets create gs://$BUCKET --location=us-east1 --no-uniform-bucket-level-access
+
+wget -O google.png https://www.google.com/images/branding/googlelogo/1x/googlelogo_color_272x92dp.png
+
+gcloud storage cp google.png gs://$BUCKET
+
+gcloud storage objects add-iam-policy-binding gs://$BUCKET/google.png \
+  --member=allUsers \
+  --role=roles/storage.objectViewer
+
+rm google.png
+
+# 3. Load Balancer Setup
+gcloud compute backend-buckets create lb-backend-bucket \
+    --gcs-bucket-name=$BUCKET \
+    --enable-cdn
+
+gcloud compute url-maps create edge-cache-lb \
+    --default-backend-bucket=lb-backend-bucket
+
+gcloud compute target-http-proxies create edge-cache-lb-proxy \
+    --url-map=edge-cache-lb
+
+gcloud compute forwarding-rules create edge-cache-lb-forwarding-rule \
+    --load-balancing-scheme=EXTERNAL_MANAGED \
+    --network-tier=PREMIUM \
+    --global \
+    --target-http-proxy=edge-cache-lb-proxy \
+    --ports=80
+
+# 4. Security Policy Setup
+gcloud compute security-policies create edge-security-policy \
+    --type=CLOUD_ARMOR_EDGE
+
+gcloud compute security-policies rules update 2147483647 \
+    --security-policy=edge-security-policy \
+    --action="deny-403"
+
+gcloud compute backend-buckets update lb-backend-bucket \
+    --edge-security-policy=edge-security-policy
+
+# 5. Output Results
+export LOAD_BALANCER_IP=$(gcloud compute forwarding-rules describe edge-cache-lb-forwarding-rule --global --format='value(IPAddress)')
+
+echo "--------------------------------------------------------"
+echo "Deployment Successful"
+echo "Load Balancer IP: $LOAD_BALANCER_IP"
+echo "Test Command: curl -svo /dev/null http://$LOAD_BALANCER_IP/google.png"
+echo "--------------------------------------------------------"
