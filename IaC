@@ -1,0 +1,21 @@
+# web-map-backend-services.yaml
+# GCP URL Map Configuration for Canary Deployment (70/30 Traffic Split)
+
+defaultService: regions/us-east1/backendServices/blue-service
+hostRules:
+- hosts:
+  - '*'
+  pathMatcher: path-matcher
+pathMatchers:
+- name: path-matcher
+  defaultService: regions/us-east1/backendServices/blue-service
+  routeRules:
+    - priority: 1
+      matchRules:
+        - prefixMatch: /
+      routeAction:
+        weightedBackendServices:
+          - backendService: regions/us-east1/backendServices/blue-service
+            weight: 70
+          - backendService: regions/us-east1/backendServices/green-service
+            weight: 30
