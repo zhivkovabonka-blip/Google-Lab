@@ -1,0 +1,30 @@
+YAML
+# GCP Monitoring Configuration Parameters
+dashboard:
+  name: "My Dashboard"
+  charts:
+    - title: "My Chart"
+      metric: "compute.googleapis.com/instance/cpu/utilization"
+
+alerting_policy:
+  display_name: "My Alert Policy"
+  combiner: "AND"
+  conditions:
+    - display_name: "CPU Usage > 20%"
+      threshold_value: 20
+      duration: "60s"
+    - display_name: "CPU Utilization > 20%"
+      threshold_value: 20
+      duration: "60s"
+  notification_channels:
+    - type: "email"
+      display_name: "My Email Channel"
+
+resource_group:
+  name: "VM instances"
+  filter: "resource.metadata.name = HAS(nginx)"
+
+uptime_check:
+  display_name: "My Uptime check"
+  protocol: "HTTP"
+  period: "60s"
