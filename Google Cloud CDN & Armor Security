@@ -1,0 +1,50 @@
+# Variables - Update these if needed
+export PROJECT_ID=$(gcloud config get-value project)
+export BUCKET_NAME=$PROJECT_ID
+export REGION="us-east4"
+
+echo "Starting Task 1: Storage Setup..."
+# Create bucket with Fine-grained access
+gcloud storage buckets create gs://$BUCKET_NAME --location=$REGION
+gcloud storage buckets update gs://$BUCKET_NAME --no-public-access-prevention
+gcloud storage buckets update gs://$BUCKET_NAME --no-uniform-bucket-level-access
+
+# Upload and make public
+wget --output-document google.png https://www.google.com/images/branding/googlelogo/1x/googlelogo_color_272x92dp.png
+gsutil cp google.png gs://$BUCKET_NAME/google.png
+gsutil acl ch -u AllUsers:R gs://$BUCKET_NAME/google.png
+
+echo "Starting Task 2: Cloud Armor Edge Policy..."
+# Create Policy
+gcloud compute security-policies create edge-security-policy \
+    --type=CLOUD_ARMOR_EDGE \
+    --description="Edge security policy for project"
+
+# Add Deny rule for current IP
+gcloud compute security-policies rules create 1000 \
+    --security-policy=edge-security-policy \
+    --src-ip-ranges="$(curl -s ifconfig.me)/32" \
+    --action=deny-403
+
+echo "Starting Task 3: Load Balancer & CDN Integration..."
+# Create Backend Bucket
+gcloud compute backend-buckets create lb-backend-bucket \
+    --gcs-bucket-name=$BUCKET_NAME \
+    --enable-cdn
+
+# Connect Armor Policy
+gcloud beta compute backend-buckets update lb-backend-bucket \
+    --edge-security-policy=edge-security-policy
+
+# Build the Network Map
+gcloud compute url-maps create edge-cache-lb --default-backend-bucket=lb-backend-bucket
+gcloud compute target-http-proxies create http-lb-proxy --url-map=edge-cache-lb
+gcloud compute forwarding-rules create http-content-rule \
+    --load-balancing-scheme=EXTERNAL \
+    --network-tier=PREMIUM \
+    --global \
+    --target-http-proxy=http-lb-proxy \
+    --ports=80
+
+echo "Setup Complete. Global IP Address:"
+gcloud compute forwarding-rules describe http-content-rule --global --format="value(IPAddress)"
