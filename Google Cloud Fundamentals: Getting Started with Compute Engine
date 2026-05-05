@@ -1,0 +1,35 @@
+# Create a VM instance
+gcloud compute instances create first-vm \ 
+--zone=us-central1-f \ 
+--machine-type=e2-micro \ 
+--tags=http-server \ 
+--metadata=enable-oslogin=TRUE --quiet
+
+# Configure Firewall rule for port 80
+gcloud compute firewall-rules create default-allow-http \ 
+--direction=INGRESS --priority=1000 --network=default \ 
+--action=ALLOW --rules=tcp:80 --source-ranges=0.0.0.0/0 \ 
+--target-tags=http-server --quiet
+
+# Create a Service Account
+gcloud iam service-accounts create test-service-account --display-name="Test Service Account"
+# Create Bucket 1 (Public) and Bucket 2
+gcloud storage buckets create gs://$PROJECT_ID-bucket1 --location=us-central1 --uniform-bucket-level-access --no-public-access-prevention
+gcloud storage buckets create gs://$PROJECT_ID-bucket2 --location=us-central1
+
+# Copy resources and set public access
+gcloud storage cp gs://cloud-training/ak8s/cat.jpg ~/cat.jpg
+gcloud storage cp ~/cat.jpg gs://$PROJECT_ID-bucket1/cat.jpg
+gcloud storage buckets add-iam-policy-binding gs://$PROJECT_ID-bucket1 --member="allUsers" --role="roles/storage.objectViewer"
+PROJECT_ID=$(gcloud config get-value project)
+CAT_URL="[https://storage.googleapis.com/$](https://storage.googleapis.com/$){PROJECT_ID}-bucket1/cat.jpg"
+
+# Fix SSH access
+gcloud compute instances add-metadata first-vm --zone=us-central1-f --metadata=enable-oslogin=FALSE --quiet
+sleep 10
+
+# Nginx installation and site deployment
+gcloud compute ssh first-vm --zone=us-central1-f --quiet --command="sudo apt-get update && sudo apt-get install -y nginx"
+echo "<html><body><h1>Cat</h1><img src='$CAT_URL'></body></html>" > index.html
+gcloud compute scp index.html first-vm:~/index.html --zone=us-central1-f --quiet
+gcloud compute ssh first-vm --zone=us-central1-f --quiet --command="sudo cp ~/index.html /var/www/html/index.html && sudo systemctl restart nginx"
