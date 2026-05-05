@@ -1,0 +1,79 @@
+#!/bin/bash
+
+# ==============================================================================
+# Description: Automated IAM Lab Setup (GCP)
+# Features: Bucket creation, custom role management, and cross-user permissions.
+# Target: Task 1 to 8 for Identity and Access Management Labs.
+# ==============================================================================
+
+# --- Setup Environment Variables ---
+export PROJECT_ID=$(gcloud config get-value project)
+export USER_2="student-01-7e587a7edb84@qwiklabs.net" # Update this for each lab run
+export REGION="asia-south1"
+
+echo "🚀 Starting Lab Automation for Project: $PROJECT_ID"
+
+# --- TASK 3: Prepare Resources (The Correct Lab Commands) ---
+echo "📦 Creating storage bucket in $REGION..."
+gcloud storage buckets create -l $REGION gs://$PROJECT_ID
+
+echo "📄 Generating and uploading sample file..."
+echo "this is a sample file" > sample.txt
+gcloud storage cp sample.txt gs://$PROJECT_ID
+
+# --- TASK 4: Remove Project Access (IAM Control) ---
+echo "❌ Removing Project Viewer role from User 2..."
+gcloud projects remove-iam-policy-binding $PROJECT_ID \
+    --member="user:$USER_2" \
+    --role="roles/viewer"
+
+# --- TASK 5: Add Specific Storage Access ---
+echo "✅ Adding Storage Object Viewer role to User 2..."
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+    --member="user:$USER_2" \
+    --role="roles/storage.objectViewer"
+
+# --- TASK 6: Create Custom IAM Roles ---
+echo "🛠 Creating Privacy Reviewer custom role..."
+gcloud iam roles create privacyreviewer --project $PROJECT_ID \
+    --title="Privacy Reviewer" \
+    --description="Custom role to perform data reviews" \
+    --stage=ALPHA \
+    --permissions="storage.buckets.list,storage.objects.get,storage.objects.list,spanner.databases.get,spanner.databases.list,bigtable.tables.get,bigtable.tables.list,bigtable.tables.readRows"
+
+echo "🛠 Creating App Viewer custom role..."
+cat << EOF > role.yaml
+title: App Viewer
+description: Custom role to view apps
+stage: ALPHA
+includedPermissions:
+- compute.instances.get
+- compute.instances.list
+- appengine.versions.get
+- appengine.versions.list
+EOF
+gcloud iam roles create app_viewer --project $PROJECT_ID --file role.yaml
+
+# --- TASK 7: Use Custom Role ---
+echo "👤 Assigning App Viewer role to User 2..."
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+    --member="user:$USER_2" \
+    --role="projects/$PROJECT_ID/roles/app_viewer"
+
+# --- TASK 8: Maintain/Update Custom Role ---
+echo "🔄 Updating App Viewer role with GKE permissions..."
+cat << EOF > update-role.yaml
+title: App Viewer
+description: Custom role to view apps
+stage: ALPHA
+includedPermissions:
+- compute.instances.get
+- compute.instances.list
+- appengine.versions.get
+- appengine.versions.list
+- container.clusters.get
+- container.clusters.list
+EOF
+gcloud iam roles update app_viewer --project $PROJECT_ID --file update-role.yaml
+
+echo "🏁 [SUCCESS] All tasks automated. Verify progress in Cloud Console."
