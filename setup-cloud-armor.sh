@@ -32,3 +32,12 @@ gcloud compute backend-services update web-backend \
     --global
 
 echo "--- Configuration Applied Successfully ---"
+bonus
+```bash
+git init
+git add .
+git commit -m "Initial commit: Cloud Armor security setup"
+git branch -M main
+# Тук добави своя линк към GitHub репозиториото
+# git remote add origin https://github.com/ПОТРЕБИТЕЛ/ИМЕ-НА-ПРОЕКТ.git
+# git push -u origin main
