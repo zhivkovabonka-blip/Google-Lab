@@ -1,0 +1,97 @@
+git init vpc-flow-lab
+cd vpc-flow-lab
+# копирай файловете
+git add .
+git commit -m "GCP VPC Flow Logs lab automation"
+git push
+Setup · SH
+#!/bin/bash
+# VPC Flow Logs Lab — Full Automation Script
+# Usage: bash setup.sh <PROJECT_ID> <REGION1> <REGION2> <ZONE1> <ZONE2> <ZONE3>
+
+PROJECT_ID=${1:-"your-project-id"}
+REGION1=${2:-"us-east4"}
+REGION2=${3:-"europe-west4"}
+ZONE1=${4:-"us-east4-c"}
+ZONE2=${5:-"europe-west4-a"}
+ZONE3=${6:-"asia-south1-c"}
+
+echo "==> Setting project"
+gcloud config set project $PROJECT_ID
+
+echo "==> Task 1: Enable flow logs"
+gcloud compute networks subnets update default \
+  --region $REGION1 --enable-flow-logs \
+  --logging-metadata=include-all
+
+gcloud compute networks subnets update default \
+  --region $REGION2 --enable-flow-logs \
+  --logging-metadata=include-all
+
+echo "==> Task 1: Create VMs"
+gcloud compute instances create default-us-vm \
+  --machine-type e2-micro --zone=$ZONE1 --network=default
+
+gcloud compute instances create default-eu-vm \
+  --machine-type e2-micro --zone=$ZONE2 --network=default
+
+gcloud compute instances create default-ap-vm \
+  --machine-type e2-micro --zone=$ZONE3 --network=default
+
+echo "==> Task 2: Generate traffic"
+gcloud compute ssh default-us-vm --zone=$ZONE1 --command="\
+  sudo apt-get install -y host && \
+  host www.wikipedia.org 8.8.8.8 && \
+  ping -c 5 default-eu-vm.$ZONE2 && \
+  ping -c 5 www.google.com && \
+  curl http://www.google.com"
+
+gcloud compute ssh default-eu-vm --zone=$ZONE2 --command="\
+  sudo apt-get install -y host && \
+  host www.wikipedia.org 8.8.8.8 && \
+  ping -c 5 default-us-vm.$ZONE1 && \
+  ping -c 5 cloud.google.com && \
+  curl http://www.google.com"
+
+gcloud compute ssh default-ap-vm --zone=$ZONE3 --command="\
+  sudo apt-get install -y host && \
+  host www.bitnami.com 8.8.8.8 && \
+  curl http://www.bitnami.com"
+
+echo "==> Task 5: Create BigQuery dataset and sink"
+bq mk flowlogs_dataset
+
+gcloud logging sinks create FlowLogBQExport \
+  bigquery.googleapis.com/projects/$PROJECT_ID/datasets/flowlogs_dataset \
+  --log-filter='resource.type="gce_subnetwork"'
+
+echo "==> Granting BigQuery permissions to logging service account"
+SA=$(gcloud logging sinks describe FlowLogBQExport --format="value(writerIdentity)")
+
+cat > /tmp/acl.json << ACLJSON
+{
+  "access": [
+    {"role": "OWNER", "specialGroup": "projectOwners"},
+    {"role": "WRITER", "specialGroup": "projectWriters"},
+    {"role": "READER", "specialGroup": "projectReaders"},
+    {"role": "WRITER", "userByEmail": "${SA#serviceAccount:}"}
+  ]
+}
+ACLJSON
+
+bq update --source /tmp/acl.json flowlogs_dataset
+
+echo "==> Task 5: Create Pub/Sub topic and sink"
+gcloud pubsub topics create FlowLogsTopic
+
+gcloud logging sinks create FlowLogPubSubExport \
+  pubsub.googleapis.com/projects/$PROJECT_ID/topics/FlowLogsTopic \
+  --log-filter='resource.type="gce_subnetwork"'
+
+echo "==> Task 7: Disable flow logging on REGION2"
+gcloud compute networks subnets update default \
+  --region $REGION2 --no-enable-flow-logs
+
+echo ""
+echo "==> Done! Wait 5-10 min for BigQuery table to appear, then run:"
+echo "bq ls flowlogs_dataset"
