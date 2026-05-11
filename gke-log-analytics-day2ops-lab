@@ -1,0 +1,50 @@
+#!/bin/bash
+
+# =====================================
+# GKE Day2 Ops Lab Automation Script
+# =====================================
+
+PROJECT_ID=$(gcloud config get-value project)
+ZONE="us-east1-c"
+REGION="us-east1"
+
+CLUSTER_NAME="day2-ops"
+LOG_BUCKET="day2ops-log"
+SINK_NAME="day2ops-sink"
+
+echo "Project: $PROJECT_ID"
+
+# Set zone
+gcloud config set compute/zone $ZONE
+
+# Get cluster credentials
+gcloud container clusters get-credentials $CLUSTER_NAME --region $REGION
+
+# Clone app
+if [ ! -d "microservices-demo" ]; then
+  git clone https://github.com/GoogleCloudPlatform/microservices-demo.git
+fi
+
+cd microservices-demo
+
+# Deploy app
+kubectl apply -f release/kubernetes-manifests.yaml
+
+# Wait for pods
+kubectl get pods
+
+# Get external IP
+EXTERNAL_IP=""
+
+echo "Waiting for external IP..."
+
+while [ -z "$EXTERNAL_IP" ]; do
+  EXTERNAL_IP=$(kubectl get service frontend-external \
+    -o jsonpath="{.status.loadBalancer.ingress[0].ip}")
+  sleep 10
+done
+
+echo "App URL: http://$EXTERNAL_IP"
+
+# Test app
+curl -o /dev/null -s -w "%{http_code}\n" http://$EXTERNAL_IP
