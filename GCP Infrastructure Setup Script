@@ -1,0 +1,12 @@
+gcloud compute instances create default-us-vm \\
+    --zone=us-west1-b \\
+    --network=mynetwork \\
+    --machine-type=e2-medium
+# Създаване на bucket
+gcloud storage buckets create gs://$PROJECT_ID
+
+# Качване на данни
+gcloud storage cp sample.txt gs://$PROJECT_ID
+
+# Почистване
+gcloud storage rm -r gs://$PROJECT_ID
