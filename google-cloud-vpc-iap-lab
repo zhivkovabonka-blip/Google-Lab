@@ -1,0 +1,23 @@
+#!/bin/bash
+# ==============================================================================
+# Script: setup-iap-firewall.sh
+# Description: Configures GCP Firewall rules to allow secure IAP tunneling
+# Author: Your Name
+# Year: 2026
+# ==============================================================================
+
+echo "🚀 Starting IAP Firewall configuration..."
+
+# 1. Create the secure IAP ingress rule
+gcloud compute firewall-rules create allow-ingress-from-iap \
+    --direction=INGRESS \
+    --action=ALLOW \
+    --rules=tcp:22,tcp:3389 \
+    --network=default \
+    --source-ranges=35.235.240.0/20 \
+    --target-tags=all-instances \
+    --no-enable-logging
+
+echo "✅ Firewall rule 'allow-ingress-from-iap' created successfully."
+echo "💡 To test connection to your Linux instance, run:"
+echo "   gcloud compute start-iap-tunnel linux-iap 80 --local-host-port=localhost:8080 --zone=us-central1-a"
