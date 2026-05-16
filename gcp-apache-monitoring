@@ -1,0 +1,31 @@
+Task2 · SH
+Copy
+
+#!/bin/bash
+set -e
+echo "==> Task 2: Install Apache + PHP"
+sudo apt-get update -y
+sudo apt-get install -y apache2 php || sudo apt-get install -y apache2
+echo "==> Done. Check http://$(curl -s ifconfig.me)"
+Task3 · SH
+Copy
+
+#!/bin/bash
+set -e
+echo "==> Task 3: Configure Ops Agent"
+sudo cp /etc/google-cloud-ops-agent/config.yaml /etc/google-cloud-ops-agent/config.yaml.bak
+ 
+printf 'metrics:\n  receivers:\n    apache:\n      type: apache\n  service:\n    pipelines:\n      apache:\n        receivers:\n          - apache\nlogging:\n  receivers:\n    apache_access:\n      type: apache_access\n    apache_error:\n      type: apache_error\n  service:\n    pipelines:\n      apache:\n        receivers:\n          - apache_access\n          - apache_error\n' | sudo tee /etc/google-cloud-ops-agent/config.yaml > /dev/null
+ 
+sudo service google-cloud-ops-agent restart
+echo "==> Waiting 60s..."
+sleep 60
+echo "==> Done."
+Task4 · SH
+Copy
+
+#!/bin/bash
+echo "==> Task 4: Generate traffic for 120s"
+timeout 120 bash -c -- 'while true; do curl -s localhost > /dev/null; sleep $((RANDOM % 4)); done'
+echo "==> Done. Open Monitoring > Dashboards > Apache Overview."
+ 
