@@ -1,0 +1,98 @@
+app.yaml
+runtime: python313
+instance_class: F1
+automatic_scaling:
+  max_instances: 1
+  requirements.txt
+  Flask==3.0.3
+PyJWT==2.8.0
+cryptography==42.0.5
+requests==2.31.0
+main.py
+from flask import Flask, render_template_string, request
+import jwt
+import requests
+
+app = Flask(__name__)
+
+# Функция за изтегляне на публичните ключове на Google за верификация
+def get_google_keys():
+    try:
+        r = requests.get('https://www.gstatic.com/iap/verify/public_key')
+        return r.json()
+    except Exception:
+        return {}
+
+@app.route('/')
+def index():
+    # 1. Взимане на криптографски подписания JWT токен от IAP
+    assertion = request.headers.get('X-Goog-IAP-JWT-Assertion')
+    
+    # 2. Взимане на обикновените хедъри (за сравнение)
+    user_email_header = request.headers.get('X-Goog-Authenticated-User-Email', 'Липсва имейл в хедъра')
+    user_id_header = request.headers.get('X-Goog-Authenticated-User-ID', 'Липсва ID в хедъра')
+
+    if not assertion:
+        email_status = "Несигурна среда (IAP е изключен!)"
+        verified_email = "Няма данни"
+        verified_id = "Няма данни"
+    else:
+        email_status = "Защитена среда (IAP е включен)"
+        try:
+            # Криптографско декодиране и проверка на цифровия подпис на Google
+            info = jwt.decode(assertion, get_google_keys(), algorithms=['ES256'], options={"verify_aud": False})
+            verified_email = info.get('email', 'Неизвестен')
+            verified_id = info.get('sub', 'Неизвестен')
+        except Exception:
+            email_status = "Грешка при верификация на JWT токена!"
+            verified_email = "Невалиден подпис!"
+            verified_id = "Няма данни"
+
+    # HTML шаблон директно в кода за по-лесно качване в GitHub
+    html_template = """
+    <!doctype html>
+    <html>
+    <head>
+        <title>Google Cloud IAP Authentication</title>
+        <style>
+            body { font-family: Arial, sans-serif; margin: 40px; background-color: #f4f6f9; color: #333; }
+            .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); max-width: 600px; margin: auto; }
+            h1 { color: #1a73e8; }
+            .status { font-weight: bold; color: #34a853; }
+            .danger { color: #ea4335; }
+            pre { background: #f1f3f4; padding: 10px; border-radius: 4px; }
+        </style>
+    </head>
+    <body>
+        <div class="card">
+            <h1>Защита на приложението с Google Cloud IAP</h1>
+            <p><strong>Статус на сигурността:</strong> <span class="{{ 'danger' if not assertion else 'status' }}">{{ status }}</span></p>
+            
+            <h3>📋 Данни от несигурни HTTP Хедъри:</h3>
+            <ul>
+                <li><strong>Имейл:</strong> {{ email_header }}</li>
+                <li><strong>Потребителско ID:</strong> {{ id_header }}</li>
+            </ul>
+
+            <h3>🔐 Криптографски верифицирани данни (JWT):</h3>
+            <ul>
+                <li><strong>Верифициран Имейл:</strong> {{ verified_email }}</li>
+                <li><strong>Верифицирано ID (sub):</strong> {{ verified_id }}</li>
+            </ul>
+        </div>
+    </body>
+    </html>
+    """
+    return render_template_string(
+        html_template, 
+        status=email_status, 
+        email_header=user_email_header, 
+        id_header=user_id_header,
+        verified_email=verified_email,
+        verified_id=verified_id,
+        assertion=assertion
+    )
+
+if __name__ == '__main__':
+    app.run(host='127.0.0.1', port=8080, debug=True)
+    
