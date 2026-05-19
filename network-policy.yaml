@@ -1,0 +1,48 @@
+# 1. Създаване на README.md
+cat <<EOF > README.md
+# GKE Network Policy Demo
+
+Demonstration of Kubernetes Network Policies for securing pod-to-pod communication in GKE.
+
+## Usage
+- Apply pod-level policy: 'kubectl apply -f network-policy.yaml'
+- Apply namespace-level policy: 'kubectl create -f network-policy-namespaced.yaml'
+EOF
+
+# 2. Създаване на network-policy.yaml (Pod-based)
+cat <<EOF > network-policy.yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: hello-server-allow-from-hello-client
+spec:
+  podSelector:
+    matchLabels:
+      app: hello-server
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: hello
+EOF
+
+# 3. Създаване на network-policy-namespaced.yaml (Namespace-based)
+cat <<EOF > network-policy-namespaced.yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: hello-server-allow-from-hello-client
+spec:
+  podSelector:
+    matchLabels:
+      app: hello-server
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: hello-apps
+EOF
