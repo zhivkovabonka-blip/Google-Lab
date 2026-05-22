@@ -1,0 +1,14 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: pod-labeler
+  namespace: default
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["list", "patch"]
+  Verification
+You can verify the permissions by running:
+
+Bash
+kubectl get role pod-labeler -o yaml
