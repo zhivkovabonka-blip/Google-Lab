@@ -1,0 +1,306 @@
+git init
+git add setup_lab.sh README.md .gitignore
+git commit -m "Initial commit: GCP Cloud Armor + reCAPTCHA lab automation"
+git remote add origin https://github.com/YOUR_USERNAME/gcp-cloud-armor-recaptcha-lab.git
+git push -u origin main
+#!/usr/bin/env bash
+# =============================================================================
+# GCP Lab: Bot Management with Cloud Armor + reCAPTCHA Enterprise
+# Full automation script — Tasks 1 through 5
+# =============================================================================
+
+set -euo pipefail
+
+# ── Colours ──────────────────────────────────────────────────────────────────
+RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
+CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\033[0m'
+
+info()    { echo -e "${CYAN}[INFO]${NC}  $*"; }
+success() { echo -e "${GREEN}[OK]${NC}    $*"; }
+warn()    { echo -e "${YELLOW}[SKIP]${NC}  $* (already exists)"; }
+error()   { echo -e "${RED}[ERROR]${NC} $*" >&2; exit 1; }
+header()  { echo -e "\n${BOLD}═══════════════════════════════════════${NC}"; \
+            echo -e "${BOLD} $*${NC}"; \
+            echo -e "${BOLD}═══════════════════════════════════════${NC}"; }
+
+# ── Config — edit these if needed ────────────────────────────────────────────
+REGION="europe-west1"
+ZONE="europe-west1-b"
+NETWORK="default"
+TARGET_TAG="allow-health-check"
+TEMPLATE_NAME="lb-backend-template"
+MIG_NAME="lb-backend-example"
+LB_NAME="http-lb"
+BACKEND_NAME="http-backend"
+HEALTH_CHECK_NAME="http-health-check"
+SECURITY_POLICY="recaptcha-policy"
+
+# =============================================================================
+# 0. Pre-flight
+# =============================================================================
+command -v gcloud &>/dev/null || error "gcloud CLI not found."
+PROJECT=$(gcloud config get-value project 2>/dev/null)
+[[ -z "$PROJECT" ]] && error "No active project. Run: gcloud config set project PROJECT_ID"
+info "Project: ${PROJECT}"
+
+# =============================================================================
+# TASK 1 — Enable APIs + Firewall Rules
+# =============================================================================
+header "TASK 1: APIs + Firewall Rules"
+
+info "Enabling required APIs..."
+for api in compute.googleapis.com logging.googleapis.com \
+           monitoring.googleapis.com recaptchaenterprise.googleapis.com; do
+  gcloud services enable "${api}" --project="${PROJECT}" && success "${api}" || \
+    warn "${api}"
+done
+
+# Health check firewall rule
+if ! gcloud compute firewall-rules describe default-allow-health-check \
+     --project="${PROJECT}" &>/dev/null 2>&1; then
+  info "Creating firewall rule: default-allow-health-check"
+  gcloud compute firewall-rules create default-allow-health-check \
+    --direction=INGRESS --priority=1000 --network="${NETWORK}" \
+    --action=ALLOW --rules=tcp:80 \
+    --source-ranges=130.211.0.0/22,35.191.0.0/16 \
+    --target-tags="${TARGET_TAG}" --project="${PROJECT}"
+  success "default-allow-health-check created"
+else
+  warn "default-allow-health-check"
+fi
+
+# SSH firewall rule
+if ! gcloud compute firewall-rules describe allow-ssh \
+     --project="${PROJECT}" &>/dev/null 2>&1; then
+  info "Creating firewall rule: allow-ssh"
+  gcloud compute firewall-rules create allow-ssh \
+    --direction=INGRESS --priority=1000 --network="${NETWORK}" \
+    --action=ALLOW --rules=tcp:22 \
+    --source-ranges=0.0.0.0/0 \
+    --target-tags="${TARGET_TAG}" --project="${PROJECT}"
+  success "allow-ssh created"
+else
+  warn "allow-ssh"
+fi
+
+# =============================================================================
+# TASK 2 — Instance Template + MIG + Named Port
+# =============================================================================
+header "TASK 2: Instance Template + MIG"
+
+STARTUP_SCRIPT='#! /bin/bash
+sudo apt-get update
+sudo apt-get install apache2 -y
+sudo a2ensite default-ssl
+sudo a2enmod ssl
+vm_hostname="$(curl -H "Metadata-Flavor:Google" http://metadata.google.internal/computeMetadata/v1/instance/name)"
+echo "Page served from: $vm_hostname" | tee /var/www/html/index.html'
+
+if ! gcloud compute instance-templates describe "${TEMPLATE_NAME}" \
+     --project="${PROJECT}" &>/dev/null 2>&1; then
+  info "Creating instance template: ${TEMPLATE_NAME}"
+  gcloud compute instance-templates create "${TEMPLATE_NAME}" \
+    --machine-type=e2-medium \
+    --network="${NETWORK}" \
+    --subnet="${NETWORK}" \
+    --region="${REGION}" \
+    --tags="${TARGET_TAG}" \
+    --image-family=debian-12 \
+    --image-project=debian-cloud \
+    --boot-disk-auto-delete \
+    --metadata=startup-script="${STARTUP_SCRIPT}" \
+    --project="${PROJECT}"
+  success "Template created"
+else
+  warn "${TEMPLATE_NAME}"
+fi
+
+if ! gcloud compute instance-groups managed describe "${MIG_NAME}" \
+     --zone="${ZONE}" --project="${PROJECT}" &>/dev/null 2>&1; then
+  info "Creating MIG: ${MIG_NAME}"
+  gcloud compute instance-groups managed create "${MIG_NAME}" \
+    --template="${TEMPLATE_NAME}" \
+    --size=1 \
+    --zone="${ZONE}" \
+    --project="${PROJECT}"
+  success "MIG created"
+else
+  warn "${MIG_NAME}"
+fi
+
+info "Setting named port http:80"
+gcloud compute instance-groups set-named-ports "${MIG_NAME}" \
+  --named-ports=http:80 \
+  --zone="${ZONE}" \
+  --project="${PROJECT}"
+success "Named port set"
+
+# =============================================================================
+# TASK 3 — HTTP Load Balancer
+# =============================================================================
+header "TASK 3: HTTP Load Balancer"
+
+if ! gcloud compute health-checks describe "${HEALTH_CHECK_NAME}" \
+     --project="${PROJECT}" &>/dev/null 2>&1; then
+  info "Creating health check: ${HEALTH_CHECK_NAME}"
+  gcloud compute health-checks create tcp "${HEALTH_CHECK_NAME}" \
+    --port=80 --check-interval=5 --timeout=5 \
+    --healthy-threshold=2 --unhealthy-threshold=2 \
+    --project="${PROJECT}"
+  success "Health check created"
+else
+  warn "${HEALTH_CHECK_NAME}"
+fi
+
+if ! gcloud compute backend-services describe "${BACKEND_NAME}" \
+     --global --project="${PROJECT}" &>/dev/null 2>&1; then
+  info "Creating backend service: ${BACKEND_NAME}"
+  gcloud compute backend-services create "${BACKEND_NAME}" \
+    --protocol=HTTP --port-name=http \
+    --health-checks="${HEALTH_CHECK_NAME}" \
+    --enable-logging --logging-sample-rate=1 \
+    --global --project="${PROJECT}"
+  gcloud compute backend-services add-backend "${BACKEND_NAME}" \
+    --instance-group="${MIG_NAME}" \
+    --instance-group-zone="${ZONE}" \
+    --global --project="${PROJECT}"
+  success "Backend service created"
+else
+  warn "${BACKEND_NAME}"
+fi
+
+if ! gcloud compute url-maps describe "${LB_NAME}" \
+     --project="${PROJECT}" &>/dev/null 2>&1; then
+  info "Creating URL map, proxy, and forwarding rule"
+  gcloud compute url-maps create "${LB_NAME}" \
+    --default-service="${BACKEND_NAME}" --project="${PROJECT}"
+  gcloud compute target-http-proxies create "${LB_NAME}-proxy" \
+    --url-map="${LB_NAME}" --project="${PROJECT}"
+  gcloud compute forwarding-rules create "${LB_NAME}-forwarding-rule" \
+    --load-balancing-scheme=EXTERNAL \
+    --network-tier=PREMIUM \
+    --ip-protocol=TCP \
+    --ports=80 \
+    --target-http-proxy="${LB_NAME}-proxy" \
+    --global --project="${PROJECT}"
+  success "Load balancer created"
+else
+  warn "${LB_NAME}"
+fi
+
+LB_IP=$(gcloud compute forwarding-rules describe "${LB_NAME}-forwarding-rule" \
+  --global --format="get(IPAddress)" --project="${PROJECT}")
+info "Load Balancer IP: ${LB_IP}"
+
+# =============================================================================
+# TASK 4 — reCAPTCHA Keys
+# =============================================================================
+header "TASK 4: reCAPTCHA Keys"
+
+info "Creating reCAPTCHA session token key..."
+SESSION_KEY=$(gcloud recaptcha keys create \
+  --display-name=test-key-name \
+  --web --allow-all-domains \
+  --integration-type=score --testing-score=0.5 \
+  --waf-feature=session-token --waf-service=ca \
+  --format="get(name)" --project="${PROJECT}" 2>/dev/null | awk -F'/' '{print $NF}')
+success "Session token key: ${SESSION_KEY}"
+
+info "Creating reCAPTCHA challenge-page key..."
+CHALLENGE_KEY=$(gcloud recaptcha keys create \
+  --display-name=challenge-page-key \
+  --web --allow-all-domains \
+  --integration-type=INVISIBLE \
+  --waf-feature=challenge-page --waf-service=ca \
+  --format="get(name)" --project="${PROJECT}" 2>/dev/null | awk -F'/' '{print $NF}')
+success "Challenge page key: ${CHALLENGE_KEY}"
+
+# Save keys to file for reference
+cat > keys.env <<EOF
+SESSION_KEY=${SESSION_KEY}
+CHALLENGE_KEY=${CHALLENGE_KEY}
+LB_IP=${LB_IP}
+EOF
+info "Keys saved to keys.env"
+
+# Deploy HTML pages to VM
+info "Waiting for VM to be ready..."
+sleep 10
+
+VM_NAME=$(gcloud compute instances list \
+  --filter="name~${MIG_NAME}" \
+  --format="get(name)" --project="${PROJECT}" | head -1)
+
+info "Deploying HTML pages to ${VM_NAME}..."
+gcloud compute ssh "${VM_NAME}" --zone="${ZONE}" --project="${PROJECT}" \
+  --command="cd /var/www/html && sudo bash -c '
+echo \"<!doctype html><html><head><title>ReCAPTCHA Session Token</title><script src=\\\"https://www.google.com/recaptcha/enterprise.js?render=${SESSION_KEY}&waf=session\\\" async defer></script></head><body><h1>Main Page</h1><p><a href=\\\"/good-score.html\\\">Visit allowed link</a></p><p><a href=\\\"/bad-score.html\\\">Visit blocked link</a></p><p><a href=\\\"/median-score.html\\\">Visit redirect link</a></p></body></html>\" > index.html
+echo \"<!DOCTYPE html><html><body><h1>Congrats! You have a good score!!</h1></body></html>\" > good-score.html
+echo \"<!DOCTYPE html><html><body><h1>Sorry, You have a bad score!</h1></body></html>\" > bad-score.html
+echo \"<!DOCTYPE html><html><body><h1>You have a median score that we need a second verification.</h1></body></html>\" > median-score.html
+'"
+success "HTML pages deployed"
+
+# =============================================================================
+# TASK 5 — Cloud Armor Security Policy
+# =============================================================================
+header "TASK 5: Cloud Armor Security Policy"
+
+if ! gcloud compute security-policies describe "${SECURITY_POLICY}" \
+     --project="${PROJECT}" &>/dev/null 2>&1; then
+  info "Creating security policy: ${SECURITY_POLICY}"
+  gcloud compute security-policies create "${SECURITY_POLICY}" \
+    --description "policy for bot management" --project="${PROJECT}"
+  success "Security policy created"
+else
+  warn "${SECURITY_POLICY}"
+fi
+
+info "Associating challenge-page key with policy..."
+gcloud compute security-policies update "${SECURITY_POLICY}" \
+  --recaptcha-redirect-site-key "${CHALLENGE_KEY}" --project="${PROJECT}"
+
+info "Adding rule 1000 — median-score redirect..."
+gcloud compute security-policies rules create 1000 \
+  --security-policy "${SECURITY_POLICY}" \
+  --expression "request.path.matches('median-score.html') && token.recaptcha_session.score == 0.5" \
+  --action redirect --redirect-type google-recaptcha \
+  --project="${PROJECT}" 2>/dev/null || warn "Rule 1000"
+
+info "Adding rule 2000 — good-score allow..."
+gcloud compute security-policies rules create 2000 \
+  --security-policy "${SECURITY_POLICY}" \
+  --expression "request.path.matches('good-score.html') && token.recaptcha_session.score > 0.4" \
+  --action allow --project="${PROJECT}" 2>/dev/null || warn "Rule 2000"
+
+info "Adding rule 3000 — bad-score deny..."
+gcloud compute security-policies rules create 3000 \
+  --security-policy "${SECURITY_POLICY}" \
+  --expression "request.path.matches('bad-score.html') && token.recaptcha_session.score < 0.6" \
+  --action "deny-403" --project="${PROJECT}" 2>/dev/null || warn "Rule 3000"
+
+info "Attaching policy to backend service..."
+gcloud compute backend-services update "${BACKEND_NAME}" \
+  --security-policy "${SECURITY_POLICY}" --global --project="${PROJECT}"
+success "Security policy attached"
+
+# =============================================================================
+# Summary
+# =============================================================================
+header "ALL DONE"
+echo ""
+echo -e "${GREEN}Load Balancer IP:${NC}   ${LB_IP}"
+echo -e "${GREEN}Session Key:${NC}        ${SESSION_KEY}"
+echo -e "${GREEN}Challenge Key:${NC}      ${CHALLENGE_KEY}"
+echo ""
+echo -e "Test URLs:"
+echo -e "  http://${LB_IP}/index.html"
+echo -e "  http://${LB_IP}/good-score.html   → ALLOW"
+echo -e "  http://${LB_IP}/bad-score.html    → 403 DENY"
+echo -e "  http://${LB_IP}/median-score.html → reCAPTCHA CHALLENGE"
+echo ""
+echo -e "${YELLOW}Note:${NC} Wait 5 minutes for Cloud Armor rules to propagate."
+echo -e "      Use Incognito windows when testing each URL."
+keys.env
+*.env
+.DS_Store
