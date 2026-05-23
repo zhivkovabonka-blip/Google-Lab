@@ -1,0 +1,155 @@
+#!/usr/bin/env bash
+# Task 1 – Initiate and Mitigate a Threat with Event Threat Detection
+set -euo pipefail
+
+PROJECT_ID="qwiklabs-gcp-04-2f118a0a99ce"
+DEMO_USER="demouser1@gmail.com"
+ROLE="roles/bigquery.admin"
+
+echo "=== [1] Set project ==="
+gcloud config set project "$PROJECT_ID" --quiet
+
+echo ""
+echo "=== [2] Grant BigQuery Admin ==="
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+  --member="user:${DEMO_USER}" \
+  --role="${ROLE}" \
+  --condition=None \
+  --quiet > /dev/null
+echo "Binding created: $DEMO_USER → $ROLE"
+
+echo ""
+echo "════════════════════════════════════════════"
+echo "  !! НАТИСНИ 'Check my progress' сега !!"
+echo "  След точките натисни Enter"
+echo "════════════════════════════════════════════"
+read -r -p "Готов? Натисни Enter: "
+
+echo ""
+echo "=== [3] Remove binding ==="
+gcloud projects remove-iam-policy-binding "$PROJECT_ID" \
+  --member="user:${DEMO_USER}" \
+  --role="${ROLE}" \
+  --quiet > /dev/null
+echo "Binding removed. Task 1 complete."
+#!/usr/bin/env bash
+# Task 2 – Configure a Cloud Environment to Detect Threats
+set -euo pipefail
+
+PROJECT_ID="qwiklabs-gcp-04-2f118a0a99ce"
+ZONE="us-central1-a"
+REGION="us-central1"
+VM_NAME="instance-1"
+
+echo "=== [1] Set region and zone ==="
+gcloud config set project "$PROJECT_ID" --quiet
+gcloud config set compute/region "$REGION" --quiet
+gcloud config set compute/zone "$ZONE" --quiet
+
+echo ""
+echo "=== [2] Enable Resource Manager Admin Read audit logs ==="
+gcloud projects get-iam-policy "$PROJECT_ID" --format=json > /tmp/current_policy.json
+
+python3 - << 'PYEOF'
+import json
+with open('/tmp/current_policy.json') as f:
+    policy = json.load(f)
+new_audit = {
+    "service": "cloudresourcemanager.googleapis.com",
+    "auditLogConfigs": [{"logType": "ADMIN_READ"}]
+}
+existing = [a for a in policy.get("auditConfigs", [])
+            if a.get("service") != "cloudresourcemanager.googleapis.com"]
+existing.append(new_audit)
+policy["auditConfigs"] = existing
+with open('/tmp/new_policy.json', 'w') as f:
+    json.dump(policy, f, indent=2)
+print("Audit policy prepared.")
+PYEOF
+
+gcloud projects set-iam-policy "$PROJECT_ID" /tmp/new_policy.json --quiet > /dev/null
+echo "✔ Admin Read audit logs enabled"
+
+echo ""
+echo "=== [3] Create VM with default SA + full API access ==="
+gcloud compute instances create "$VM_NAME" \
+  --project="$PROJECT_ID" \
+  --zone="$ZONE" \
+  --machine-type="e2-medium" \
+  --scopes="https://www.googleapis.com/auth/cloud-platform" \
+  --quiet
+echo "✔ VM '$VM_NAME' created"
+
+echo ""
+echo "=== [4] Wait 60s for VM to boot ==="
+for i in $(seq 60 -5 1); do
+  printf "\r  %3ds remaining …" "$i"; sleep 5
+done
+echo ""
+
+echo ""
+echo "=== [5] SSH → getIamPolicy (triggers ETD finding) ==="
+gcloud compute ssh "$VM_NAME" \
+  --zone="$ZONE" \
+  --project="$PROJECT_ID" \
+  --command="gcloud projects get-iam-policy \$(gcloud config get project)" \
+  --quiet 2>/dev/null
+
+echo ""
+echo "════════════════════════════════════════════"
+echo "  Изчакай 1-2 мин. → намери finding:"
+echo "  'Discovery: Service Account Self-Investigation'"
+echo "  → Mute → Apply mute override"
+echo "  После натисни 'Check my progress'"
+echo "════════════════════════════════════════════"
+echo "Task 2 complete."
+#!/usr/bin/env bash
+# Task 3 – Manage SCC Findings with Event Threat Detection
+set -euo pipefail
+
+PROJECT_ID="qwiklabs-gcp-04-2f118a0a99ce"
+ZONE="us-central1-a"
+VM_NAME="instance-1"
+DNS_POLICY="dns-test-policy"
+
+echo "=== [1] Create DNS policy with logging ==="
+gcloud dns policies create "$DNS_POLICY" \
+  --project="$PROJECT_ID" \
+  --networks=default \
+  --enable-logging \
+  --description="DNS logging policy for ETD" \
+  --quiet 2>/dev/null && echo "✔ DNS policy created" \
+  || echo "⚠ Policy already exists — continuing"
+
+echo ""
+echo "=== [2] SSH → curl malicious domain ==="
+gcloud compute ssh "$VM_NAME" \
+  --zone="$ZONE" \
+  --project="$PROJECT_ID" \
+  --command="curl -s etd-malware-trigger.goog" \
+  --quiet
+echo ""
+echo "✔ Malicious domain triggered"
+
+echo ""
+echo "=== [3] Wait 90s for SCC to detect 'Malware: Bad Domain' ==="
+for i in $(seq 90 -5 1); do
+  printf "\r  %3ds remaining …" "$i"; sleep 5
+done
+echo ""
+
+echo ""
+echo "════════════════════════════════════════════"
+echo "  В SCC конзолата:"
+echo "  'Malware: Bad Domain' → checkbox → Mute Options → Apply mute override"
+echo "  После натисни 'Check my progress'"
+echo "════════════════════════════════════════════"
+read -r -p "Получи точките, после натисни Enter за да изтриеш VM-а: "
+
+echo ""
+echo "=== [4] Delete VM ==="
+gcloud compute instances delete "$VM_NAME" \
+  --zone="$ZONE" \
+  --project="$PROJECT_ID" \
+  --quiet
+echo "✔ VM deleted. Task 3 complete."
