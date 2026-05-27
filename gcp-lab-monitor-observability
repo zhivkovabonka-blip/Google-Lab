@@ -1,0 +1,196 @@
+#!/bin/bash
+# Task 2: Fix video-queue-monitor startup script
+# Lab: Monitor and Log with Google Cloud Observability
+
+set -e
+
+PROJECT_ID="qwiklabs-gcp-02-0bd8dd39eeac"
+ZONE="us-east1-b"
+INSTANCE="video-queue-monitor"
+
+gcloud config set project "$PROJECT_ID"
+
+echo "==> Updating startup script..."
+gcloud compute instances add-metadata "$INSTANCE" \
+  --zone="$ZONE" \
+  --metadata=startup-script='#! /bin/bash
+export HOME=/root
+export GOPATH=/work/go
+export PATH=$PATH:/usr/local/go/bin
+export MY_PROJECT_ID=$(curl -s "http://metadata.google.internal/computeMetadata/v1/project/project-id" -H "Metadata-Flavor: Google")
+export MY_GCE_INSTANCE_ID=$(curl -s "http://metadata.google.internal/computeMetadata/v1/instance/id" -H "Metadata-Flavor: Google")
+export MY_GCE_INSTANCE_ZONE=$(curl -s "http://metadata.google.internal/computeMetadata/v1/instance/zone" -H "Metadata-Flavor: Google" | cut -d/ -f4)
+cd /work/go/video
+go get contrib.go.opencensus.io/exporter/stackdriver
+go get go.opencensus.io/stats
+go get go.opencensus.io/stats/view
+go get google.golang.org/genproto/googleapis/api/monitoredres
+go build -o /work/go/video-queue-monitor-app .
+/work/go/video-queue-monitor-app > /var/log/queue-monitor.log 2>&1 &'
+
+echo "==> Restarting instance..."
+gcloud compute instances reset "$INSTANCE" --zone="$ZONE"
+
+echo ""
+echo "==> Wait ~3 minutes, then check log with:"
+echo "    gcloud compute ssh $INSTANCE --zone=$ZONE --tunnel-through-iap --command='sudo tail -20 /var/log/queue-monitor.log'"
+#!/bin/bash
+# Task 4: Add custom metric charts to Media_Dashboard
+# Lab: Monitor and Log with Google Cloud Observability
+
+set -e
+
+PROJECT_ID="qwiklabs-gcp-02-0bd8dd39eeac"
+gcloud config set project "$PROJECT_ID"
+
+echo "==> Fetching dashboard ID..."
+DASHBOARD_ID=$(gcloud monitoring dashboards list \
+  --format="value(name)" \
+  --filter="displayName=Media_Dashboard" | awk -F/ '{print $NF}')
+
+echo "    Dashboard ID: $DASHBOARD_ID"
+
+echo "==> Fetching current dashboard JSON..."
+gcloud monitoring dashboards describe "$DASHBOARD_ID" --format=json > /tmp/dash.json
+
+echo "==> Adding two custom metric charts..."
+python3 << 'PYEOF'
+import json
+
+with open('/tmp/dash.json') as f:
+    d = json.load(f)
+
+new_charts = [
+  {
+    "title": "Video Input Queue Size",
+    "xyChart": {
+      "dataSets": [{
+        "timeSeriesQuery": {
+          "timeSeriesFilter": {
+            "filter": "metric.type=\"custom.googleapis.com/opencensus/my.videoservice.org/measure/input_queue_size\""
+          }
+        },
+        "plotType": "LINE"
+      }],
+      "chartOptions": {"mode": "COLOR"}
+    }
+  },
+  {
+    "title": "High Resolution Video Upload Rate",
+    "xyChart": {
+      "dataSets": [{
+        "timeSeriesQuery": {
+          "timeSeriesFilter": {
+            "filter": "metric.type=\"logging.googleapis.com/user/large_video_upload_rate\""
+          }
+        },
+        "plotType": "LINE"
+      }],
+      "chartOptions": {"mode": "COLOR"}
+    }
+  }
+]
+
+if 'gridLayout' in d:
+    d['gridLayout']['widgets'] += new_charts
+else:
+    d['mosaicLayout']['tiles'] += new_charts
+
+with open('/tmp/updated_dash.json', 'w') as f:
+    json.dump(d, f)
+
+print("    Charts added.")
+PYEOF
+
+echo "==> Updating dashboard..."
+gcloud monitoring dashboards update "$DASHBOARD_ID" \
+  --config-from-file=/tmp/updated_dash.json
+
+echo ""
+echo "==> Task 4 DONE. Two charts added to Media_Dashboard."
+#!/bin/bash
+# Task 5: Create alert for high resolution video upload rate
+PROJECT_ID="qwiklabs-gcp-02-0bd8dd39eeac"
+
+gcloud config set project "$PROJECT_ID"
+
+cat > /tmp/alert-policy.json << 'EOF'
+{
+  "displayName": "High Resolution Video Upload Alert",
+  "conditions": [
+    {
+      "displayName": "High res video upload rate > 5 per second",
+      "conditionThreshold": {
+        "filter": "metric.type=\"logging.googleapis.com/user/large_video_upload_rate\" resource.type=\"global\"",
+        "aggregations": [
+          {
+            "alignmentPeriod": "60s",
+            "perSeriesAligner": "ALIGN_RATE"
+          }
+        ],
+        "comparison": "COMPARISON_GT",
+        "thresholdValue": 5,
+        "duration": "0s",
+        "trigger": {
+          "count": 1
+        }
+      }
+    }
+  ],
+  "alertStrategy": {
+    "autoClose": "604800s"
+  },
+  "combiner": "OR",
+  "enabled": true,
+  "notificationChannels": []
+}
+EOF
+
+echo "==> Creating alert policy..."
+gcloud alpha monitoring policies create --policy-from-file=/tmp/alert-policy.json
+
+echo ""
+echo "==> Verifying alert policy..."
+gcloud alpha monitoring policies list --format="table(displayName,enabled,conditions[0].displayName)"
+GCP Lab Automation — Monitor and Log with Google Cloud Observability
+Bash scripts automating the Monitor and Log with Google Cloud Observability Skill Badge lab.
+
+Lab Tasks Overview
+TaskDescriptionAutomatedTask 1Enable Cloud MonitoringManual (one click in console)Task 2Fix video-queue-monitor to write custom metrics✅ task2_video_monitor.shTask 3Create log-based metric for 4K/8K video uploadsManual (Cloud Logging UI)Task 4Add two custom metric charts to Media_Dashboard✅ task4_dashboard.shTask 5Create alert for high resolution upload rate > threshold✅ task5_alert.sh
+
+Scripts
+task2_video_monitor.sh
+Fixes the startup script on the video-queue-monitor Compute Instance.
+The Go app requires three environment variables fetched from the GCE metadata server:
+
+MY_PROJECT_ID
+MY_GCE_INSTANCE_ID
+MY_GCE_INSTANCE_ZONE
+
+Also handles building the Go binary from source (/work/go/video/main.go).
+task4_dashboard.sh
+Adds two charts to the Media_Dashboard:
+
+Video input queue size (opencensus/my.videoservice.org/measure/input_queue_size)
+High resolution video upload rate (logging.googleapis.com/user/large_video_upload_rate)
+
+task5_alert.sh
+Creates a Cloud Monitoring alerting policy that fires when the high resolution video upload rate exceeds 5 per second.
+
+Usage
+bashgit clone https://github.com/<your-username>/gcp-lab-monitor-observability
+cd gcp-lab-monitor-observability
+chmod +x *.sh
+Edit the PROJECT_ID variable in each script, then run in order:
+bash./task2_video_monitor.sh
+# Wait ~3 min, verify log shows no errors
+./task4_dashboard.sh
+./task5_alert.sh
+
+Key Gotchas
+
+The Go app source is at /work/go/video/main.go — needs go get + go build before running
+Zone and instance ID must come from the GCE metadata server at runtime
+Dashboard update needs the current etag — always fetch fresh JSON before patching
+Allow 5–10 min for log-based metrics to appear in Metrics Explorer
+Task 3 log filter: textPayload=~"file_format: (4K|8K)"
