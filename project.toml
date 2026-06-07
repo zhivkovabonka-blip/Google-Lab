@@ -1,0 +1,48 @@
+package com.example.HelloSecretManager;
+
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.beans.factory.annotation.Value;
+
+@RestController
+public class HelloSecretManagerController {
+
+    @Value("${sm://greeting}")
+    String greeting;
+
+    @GetMapping("/")
+    public String hello() {
+        return greeting + " World!";
+    }
+}
+Hello Secret Manager - Spring Boot on Cloud Run
+This is a demonstration project that shows how to integrate a Spring Boot application with Google Cloud Secret Manager and how to deploy it to Cloud Run.
+
+Key Features
+Uses Google Cloud Secret Manager to store sensitive data (greeting).
+
+Spring Cloud GCP for seamless integration with cloud services.
+
+Cloud Run for containerized deployment without the need to manage servers.
+
+Buildpacks for automated container creation.
+
+Technologies
+Java 21
+
+Spring Boot 3.5.10
+
+Google Cloud Platform (Secret Manager, Cloud Run, Cloud Build)
+
+Setup
+Enable the required API services:
+gcloud services enable run.googleapis.com cloudbuild.googleapis.com secretmanager.googleapis.com
+
+Configure the secret in Secret Manager:
+echo -n "Greetings" | gcloud secrets create greeting --data-file=-
+
+Deploy to Cloud Run:
+gcloud run deploy hello-secret-manager --source . --region asia-south1
+
+Author
+This project is based on a laboratory exercise for Cloud Native Java development.
