@@ -1,0 +1,16 @@
+# Google Cloud & Terraform Lab: Backends, State Management, and Import
+
+This repository contains the Terraform configuration files and scripts used to complete the Google Cloud Qwiklabs hands-on lab focused on Terraform state management, remote backends, and infrastructure importing.
+
+## 🚀 What We Learned / What We Liked
+We really enjoyed exploring Terraform remote backends and learning how state migration and state locking work with Google Cloud Storage. It was also great to practice importing existing real-world infrastructure into Terraform and managing it successfully.
+
+## 🛠️ Key Topics Covered
+1. **Terraform Backends:** Transitioning from a local backend to a remote **Google Cloud Storage (GCS) backend**.
+2. **State Migration & Locking:** Safely migrating state using `terraform init -migrate-state` and utilizing state locking to prevent concurrency issues.
+3. **State Refresh:** Reconciling Terraform state with real-world infrastructure updates (such as bucket labels).
+4. **Terraform Import:** Bringing unmanaged infrastructure (like a running Docker container and NGINX image) under Terraform's lifecycle management.
+
+## 📁 Project Structure
+- `main.tf` - Configures the Google Cloud provider, backend settings, and Cloud Storage bucket resource.
+- `docker.tf` - Defines the Docker container and image resources (used in the import task).
