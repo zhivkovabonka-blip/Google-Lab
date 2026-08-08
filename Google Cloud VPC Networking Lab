@@ -1,0 +1,29 @@
+# 1. Set Project ID
+gcloud config set project YOUR_PROJECT_ID
+
+# 2. Delete Default Network
+gcloud compute firewall-rules delete default-allow-icmp default-allow-internal default-allow-rdp default-allow-ssh --quiet
+gcloud compute networks delete default --quiet
+
+# 3. Create Custom Networks & Subnets
+gcloud compute networks create mynetwork --subnet-mode=custom
+gcloud compute networks create managementnet --subnet-mode=custom
+gcloud compute networks subnets create managementsubnet-us --network=managementnet --region=us-east4 --range=10.240.0.0/20
+
+gcloud compute networks create privatenet --subnet-mode=custom
+gcloud compute networks subnets create privatesubnet-us --network=privatenet --region=us-east4 --range=172.16.0.0/24
+gcloud compute networks subnets create privatesubnet-eu --network=privatenet --region=europe-west1 --range=172.20.0.0/20
+
+# 4. Configure Firewall Rules
+gcloud compute firewall-rules create mynetwork-allow-custom --network=mynetwork --allow=tcp:0-65535,udp:0-65535,icmp --source-ranges=10.128.0.0/9
+gcloud compute firewall-rules create mynetwork-allow-ssh --network=mynetwork --allow=tcp:22 --source-ranges=0.0.0.0/0
+gcloud compute firewall-rules create mynetwork-allow-icmp --network=mynetwork --allow=icmp --source-ranges=0.0.0.0/0
+
+gcloud compute firewall-rules create managementnet-allow-icmp-ssh-rdp --network=managementnet --allow=icmp,tcp:22,tcp:3389 --source-ranges=0.0.0.0/0
+gcloud compute firewall-rules create privatenet-allow-icmp-ssh-rdp --network=privatenet --allow=icmp,tcp:22,tcp:3389 --source-ranges=0.0.0.0/0
+
+# 5. Deploy VM Instances
+gcloud compute instances create mynet-us-vm --zone=us-east4-c --machine-type=e2-medium --network=mynetwork --subnet=mynetwork --tags=iap-gce --image-family=debian-12 --image-project=debian-cloud
+gcloud compute instances create mynet-eu-vm --zone=europe-west1-b --machine-type=e2-medium --network=mynetwork --subnet=mynetwork --tags=iap-gce --image-family=debian-12 --image-project=debian-cloud
+gcloud compute instances create managementnet-us-vm --zone=us-east4-c --machine-type=e2-micro --subnet=managementsubnet-us --image-family=debian-12 --image-project=debian-cloud
+gcloud compute instances create privatenet-us-vm --zone=us-east4-c --machine-type=e2-micro --subnet=privatesubnet-us --image-family=debian-12 --image-project=debian-cloud
