@@ -1,0 +1,99 @@
+#!/bin/bash
+
+# ==========================================
+# Google Cloud Networking Lab
+# ==========================================
+
+PROJECT_ID="qwiklabs-gcp-03-4b6a87687f48"
+REGION="europe-west1"
+ZONE="europe-west1-d"
+
+gcloud config set project "$PROJECT_ID"
+
+# ==========================================
+# TASK 1 - Create VPC Network
+# ==========================================
+
+gcloud compute networks create privatenet \
+    --subnet-mode=custom
+
+gcloud compute networks subnets create privatenet-us \
+    --network=privatenet \
+    --region="$REGION" \
+    --range=10.130.0.0/20
+
+# Create SSH firewall rule for IAP
+gcloud compute firewall-rules create privatenet-allow-ssh \
+    --network=privatenet \
+    --direction=INGRESS \
+    --action=ALLOW \
+    --rules=tcp:22 \
+    --source-ranges=35.235.240.0/20
+
+# Create VM without external IP
+gcloud compute instances create vm-internal \
+    --zone="$ZONE" \
+    --machine-type=e2-medium \
+    --network=privatenet \
+    --subnet=privatenet-us \
+    --no-address \
+    --image-family=debian-12 \
+    --image-project=debian-cloud
+
+# Connect through IAP
+gcloud compute ssh vm-internal \
+    --zone="$ZONE" \
+    --tunnel-through-iap
+
+
+# ==========================================
+# TASK 2 - Private Google Access
+# ==========================================
+
+export MY_BUCKET="${PROJECT_ID}-private-access"
+
+# Create Cloud Storage bucket
+gcloud storage buckets create "gs://$MY_BUCKET" \
+    --location=US \
+    --uniform-bucket-level-access
+
+# Copy image to bucket
+gcloud storage cp \
+    gs://cloud-training/gcpnet/private/access.svg \
+    "gs://$MY_BUCKET/"
+
+# Enable Private Google Access
+gcloud compute networks subnets update privatenet-us \
+    --region="$REGION" \
+    --enable-private-ip-google-access
+
+# Verify Private Google Access
+gcloud compute networks subnets describe privatenet-us \
+    --region="$REGION" \
+    --format="get(privateIpGoogleAccess)"
+
+
+# ==========================================
+# TASK 3 - Cloud NAT
+# ==========================================
+
+# Create Cloud Router
+gcloud compute routers create nat-router \
+    --network=privatenet \
+    --region="$REGION"
+
+# Create Cloud NAT gateway
+gcloud compute routers nats create nat-config \
+    --router=nat-router \
+    --region="$REGION" \
+    --nat-all-subnet-ip-ranges \
+    --auto-allocate-nat-external-ips
+
+# Verify NAT configuration
+gcloud compute routers nats describe nat-config \
+    --router=nat-router \
+    --region="$REGION"
+
+# Check router status
+gcloud compute routers get-status nat-router \
+    --region="$REGION"
