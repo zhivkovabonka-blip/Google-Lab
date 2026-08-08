@@ -1,0 +1,17 @@
+# Google Cloud Lab: NCC and Private Service Connect
+
+This repository contains the configuration steps and automation commands used to complete the Google Cloud lab focused on **Network Connectivity Center (NCC)** and **Private Service Connect (PSC) with Cloud SQL**.
+
+---
+
+## 🚀 Lab Automation Scripts
+
+### 1. Database Setup (Task 5)
+```bash
+# Connect to the VM via IAP
+gcloud compute ssh --zone europe-west4-b "cloudsql-client" --tunnel-through-iap --project qwiklabs-gcp-01-80c2b5b31d8d
+
+# Inside the VM, create the database structure
+DNS_RECORD=$(gcloud sql instances describe cloudsql-postgres-xntq --project=qwiklabs-gcp-01-80c2b5b31d8d --format="value(dnsName)")
+
+PGPASSWORD=changeme psql "sslmode=disable dbname=company user=postgres host=$DNS_RECORD" <<EOF # ## ### $DNS_RECORD 'Mayer', 'Mustermann', 'Schmidt', ( ('Anna', ('Max', ('Peter', (10, (Task (first, ) ); * --- --format="value(dnsName)" --global --project="qwiklabs-gcp-01-80c2b5b31d8d" --quiet --type="A" --zone="cloudsql-dns" 2) 2. 5000.00), 6) 6000.00); 7000.00), CREATE Cleanup Cloud Connect. DECIMAL DNS DNS_RECORD="$(gcloud" Delete EOF EXISTS FROM Feedback GitHub Google IF INSERT INTO KEY, NCC NOT NULL, PRIMARY Private Resource SELECT SERIAL Service Setting TABLE VALUES VARCHAR(255) We \q `README.md` ``` ```bash a advanced and architecture because clear cloud cloudsql-dns cloudsql-postgres-xntq connection database delete describe dns employees employees; enjoyed enterprise-level environments. experience features felt first gave gcloud hands-on hub hubs id instances it lab last last, like managed-zones ncc-hub network-connectivity networking of practical provided really record record-sets rewarding salary salary) securing spokes sql the this understanding up us very vpc1-spoke1 vpc2-spoke2 with zone Можеш в да копираш просто репозиториум твоя текст този файла! 💬>
