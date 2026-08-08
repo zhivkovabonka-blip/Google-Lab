@@ -1,0 +1,13 @@
+# Google Cloud Essentials: Cloud Storage & Cloud Shell Lab
+
+## Overview
+This repository documents the steps and solutions for completing the hands-on Google Cloud lab focused on **Cloud Storage** and **Cloud Shell**. 
+
+## Key Learnings & Tasks Completed
+* **Cloud Console Management:** Created and managed cloud resources (Storage buckets) directly through the Google Cloud Web Console.
+* **Cloud Shell Proficiency:** Utilized Cloud Shell and the `gcloud storage` command-line tool to provision storage resources efficiently.
+* **Environment Configuration:** Handled active project configurations and resolved permission constraints (`403` / `412` resource location policies) seamlessly.
+* **File Operations:** Explored file uploads and bucket copying mechanisms within the terminal environment.
+
+## Why We Liked This Lab
+This lab was fantastic because it gave us hands-on experience working with both the Cloud Console and Cloud Shell. We learned how to efficiently create and manage Cloud Storage buckets using different methods. Overall, it was a great practical exercise for mastering basic Google Cloud navigation!
