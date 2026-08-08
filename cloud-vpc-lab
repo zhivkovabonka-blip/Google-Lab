@@ -1,0 +1,68 @@
+#!/bin/bash
+
+PROJECT_ID="qwiklabs-gcp-03-e5bb10932ca5"
+
+gcloud config set project "$PROJECT_ID"
+
+# Create managementnet
+gcloud compute networks create managementnet \
+    --subnet-mode=custom \
+    --bgp-routing-mode=regional
+
+gcloud compute networks subnets create managementsubnet-1 \
+    --network=managementnet \
+    --region=us-west3 \
+    --range=10.240.0.0/20
+
+# Create privatenet
+gcloud compute networks create privatenet \
+    --subnet-mode=custom \
+    --bgp-routing-mode=regional
+
+gcloud compute networks subnets create privatesubnet-1 \
+    --network=privatenet \
+    --region=us-west3 \
+    --range=172.16.0.0/24
+
+gcloud compute networks subnets create privatesubnet-2 \
+    --network=privatenet \
+    --region=asia-southeast1 \
+    --range=172.20.0.0/20
+
+# Firewall rules
+gcloud compute firewall-rules create managementnet-allow-icmp-ssh-rdp \
+    --network=managementnet \
+    --direction=INGRESS \
+    --priority=1000 \
+    --action=ALLOW \
+    --rules=icmp,tcp:22,tcp:3389 \
+    --source-ranges=0.0.0.0/0
+
+gcloud compute firewall-rules create privatenet-allow-icmp-ssh-rdp \
+    --network=privatenet \
+    --direction=INGRESS \
+    --priority=1000 \
+    --action=ALLOW \
+    --rules=icmp,tcp:22,tcp:3389 \
+    --source-ranges=0.0.0.0/0
+
+# VM instances
+gcloud compute instances create managementnet-vm-1 \
+    --zone=us-west3-a \
+    --machine-type=e2-micro \
+    --subnet=managementsubnet-1 \
+    --image-family=debian-12 \
+    --image-project=debian-cloud
+
+gcloud compute instances create privatenet-vm-1 \
+    --zone=us-west3-a \
+    --machine-type=e2-micro \
+    --subnet=privatesubnet-1 \
+    --image-family=debian-12 \
+    --image-project=debian-cloud
+
+# Verify
+gcloud compute networks list
+gcloud compute networks subnets list --sort-by=NETWORK
+gcloud compute firewall-rules list --sort-by=NETWORK
+gcloud compute instances list --sort-by=ZONE
