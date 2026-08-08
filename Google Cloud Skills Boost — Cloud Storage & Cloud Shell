@@ -1,0 +1,89 @@
+Task 1 — Create a Cloud Storage bucket
+
+Created a bucket using the Google Cloud Console.
+
+gcloud storage buckets list
+
+Bucket:
+
+gs://qwiklabs-gcp-04-2ca80f6baee4-console
+Task 2 — Access Cloud Shell
+
+Cloud Shell provides:
+
+Command-line access to a temporary Compute Engine VM
+5 GB persistent storage in /home
+Pre-installed Google Cloud SDK tools
+Built-in authorization for Google Cloud resources
+Task 3 — Create a bucket using Cloud Shell
+gcloud storage buckets create gs://qwiklabs-gcp-04-2ca80f6baee4-bucket2
+
+Verify the buckets:
+
+gcloud storage buckets list
+Task 4 — Upload a file to a Storage bucket
+
+Create a test file:
+
+echo "Cloud Shell Lab Task 4" > my_file.txt
+
+Verify the file:
+
+ls -l my_file.txt
+
+Upload it to Cloud Storage:
+
+gcloud storage cp my_file.txt gs://qwiklabs-gcp-04-2ca80f6baee4-bucket2/
+
+Verify the uploaded file:
+
+gcloud storage ls gs://qwiklabs-gcp-04-2ca80f6baee4-bucket2/
+Task 5 — Create a persistent state in Cloud Shell
+
+Set the region:
+
+INFRACLASS_REGION=us-east4
+
+Verify:
+
+echo $INFRACLASS_REGION
+
+Create the configuration directory:
+
+mkdir infraclass
+
+Create the configuration file:
+
+touch infraclass/config
+
+Save the region:
+
+echo INFRACLASS_REGION=$INFRACLASS_REGION >> ~/infraclass/config
+
+Set the project ID:
+
+INFRACLASS_PROJECT_ID=qwiklabs-gcp-04-2ca80f6baee4
+
+Save the project ID:
+
+echo INFRACLASS_PROJECT_ID=$INFRACLASS_PROJECT_ID >> ~/infraclass/config
+
+Load the variables:
+
+source infraclass/config
+
+Verify:
+
+echo $INFRACLASS_PROJECT_ID
+
+Configure .profile:
+
+nano .profile
+
+Add:
+
+source infraclass/config
+
+After reopening Cloud Shell, verify persistence:
+
+echo $INFRACLASS_PROJECT_ID
