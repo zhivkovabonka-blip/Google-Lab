@@ -1,0 +1,137 @@
+# ============================================================
+# Google Cloud Network Connectivity Center (NCC) Lab
+# Hub-and-Spoke VPC & On-Prem Connectivity
+# Project: qwiklabs-gcp-04-8f665ec7c8d1
+# ============================================================
+
+PROJECT_ID="qwiklabs-gcp-04-8f665ec7c8d1"
+REGION="us-east4"
+HUB="globaltech-ncc-hub"
+
+gcloud config set project "$PROJECT_ID"
+
+
+# ============================================================
+# TASK 1 — Connect 2 On-Prem VPCs with NCC
+# ============================================================
+
+# Check preconfigured VPN tunnels
+gcloud compute vpn-tunnels list \
+  --format="table(name,region,status,peerIp,router)"
+
+# Create NCC Hub
+gcloud network-connectivity hubs create "$HUB" \
+  --description="GlobalTech NCC Hub"
+
+# Office 1 VPN Spoke
+gcloud network-connectivity spokes linked-vpn-tunnels create office-1 \
+  --region="$REGION" \
+  --hub="projects/$PROJECT_ID/locations/global/hubs/$HUB" \
+  --vpn-tunnels="https://www.googleapis.com/compute/v1/projects/$PROJECT_ID/regions/$REGION/vpnTunnels/routing-to-onprem-office1-tunnel-0,https://www.googleapis.com/compute/v1/projects/$PROJECT_ID/regions/$REGION/vpnTunnels/routing-to-onprem-office1-tunnel-1" \
+  --site-to-site-data-transfer
+
+# Office 2 VPN Spoke
+gcloud network-connectivity spokes linked-vpn-tunnels create office-2 \
+  --region="$REGION" \
+  --hub="projects/$PROJECT_ID/locations/global/hubs/$HUB" \
+  --vpn-tunnels="https://www.googleapis.com/compute/v1/projects/$PROJECT_ID/regions/$REGION/vpnTunnels/routing-to-onprem-office2-tunnel-0,https://www.googleapis.com/compute/v1/projects/$PROJECT_ID/regions/$REGION/vpnTunnels/routing-to-onprem-office2-tunnel-1" \
+  --site-to-site-data-transfer
+
+# Verify NCC Hub
+gcloud network-connectivity hubs describe "$HUB"
+
+# Verify Spokes
+gcloud network-connectivity spokes list \
+  --region="$REGION"
+
+# Verify VPN tunnels
+gcloud compute vpn-tunnels list \
+  --format="table(name,region,status)"
+
+# Test Office 1 -> Office 2
+gcloud compute ssh onprem-office1-vm \
+  --zone=us-east4-a \
+  --command="ping -c 4 10.2.0.2"
+
+# Test Office 2 -> Office 1
+gcloud compute ssh onprem-office2-vm \
+  --zone=us-east4-a \
+  --command="ping -c 4 10.1.0.2"
+
+
+# ============================================================
+# TASK 2 — Connect VPC to VPC
+# ============================================================
+
+# Workload VPC 1 Spoke
+gcloud network-connectivity spokes linked-vpc-network create workload-1 \
+  --global \
+  --hub="projects/$PROJECT_ID/locations/global/hubs/$HUB" \
+  --vpc-network="https://www.googleapis.com/compute/v1/projects/$PROJECT_ID/global/networks/workload-vpc-1" \
+  --include-export-ranges="ALL_PRIVATE_IPV4_RANGES"
+
+# Workload VPC 2 Spoke
+gcloud network-connectivity spokes linked-vpc-network create workload-2 \
+  --global \
+  --hub="projects/$PROJECT_ID/locations/global/hubs/$HUB" \
+  --vpc-network="https://www.googleapis.com/compute/v1/projects/$PROJECT_ID/global/networks/workload-vpc-2" \
+  --include-export-ranges="ALL_PRIVATE_IPV4_RANGES"
+
+# Verify VPC spokes
+gcloud network-connectivity spokes list --global
+
+# Test Workload VPC 1 -> Workload VPC 2
+gcloud compute ssh workload1-vm \
+  --zone=us-east4-a \
+  --command="ping -c 4 10.20.0.2"
+
+# Test Workload VPC 2 -> Workload VPC 1
+gcloud compute ssh workload2-vm \
+  --zone=us-east4-a \
+  --command="ping -c 4 10.10.0.2"
+
+
+# ============================================================
+# TASK 3 — Connect VPC to On-Prem
+# ============================================================
+
+# On-Prem Office 1 hybrid spoke
+gcloud network-connectivity spokes linked-vpc-network create hybrid-office-1 \
+  --global \
+  --hub="projects/$PROJECT_ID/locations/global/hubs/$HUB" \
+  --vpc-network="https://www.googleapis.com/compute/v1/projects/$PROJECT_ID/global/networks/on-prem-office-1-vpc" \
+  --include-export-ranges="ALL_PRIVATE_IPV4_RANGES"
+
+# Remove original workload-1 spoke so it can be recreated
+# with the required "hybrid" name.
+gcloud network-connectivity spokes delete workload-1 \
+  --global \
+  --quiet
+
+# Workload VPC 1 hybrid spoke
+gcloud network-connectivity spokes linked-vpc-network create hybrid-workload-1 \
+  --global \
+  --hub="projects/$PROJECT_ID/locations/global/hubs/$HUB" \
+  --vpc-network="https://www.googleapis.com/compute/v1/projects/$PROJECT_ID/global/networks/workload-vpc-1" \
+  --include-export-ranges="ALL_PRIVATE_IPV4_RANGES"
+
+# Verify all NCC spokes
+gcloud network-connectivity spokes list --global
+
+# Test On-Prem Office 1 -> Workload VPC 1
+gcloud compute ssh onprem-office1-vm \
+  --zone=us-east4-a \
+  --command="ping -c 4 10.10.0.2"
+
+# Test Workload VPC 1 -> On-Prem Office 1
+gcloud compute ssh workload1-vm \
+  --zone=us-east4-a \
+  --command="ping -c 4 10.1.0.2"
+
+
+# ============================================================
+# VM INVENTORY / CONNECTIVITY VERIFICATION
+# ============================================================
+
+gcloud compute instances list \
+  --format="table(name,zone,networkInterfaces[0].network.basename(),networkInterfaces[0].networkIP)"
