@@ -1,0 +1,126 @@
+# task-1-main.tf
+# Terraform Task 1 - Use modules from the Registry
+
+terraform {
+  required_version = ">= 1.5.7"
+
+  required_providers {
+    google = {
+      source  = "hashicorp/google"
+      version = ">= 5.0"
+    }
+  }
+}
+
+provider "google" {
+  project = "qwiklabs-gcp-04-66a638fad440"
+  region  = "us-east1"
+}
+
+module "test-vpc-module" {
+  source       = "terraform-google-modules/network/google"
+  version      = "~> 6.0"
+
+  project_id   = "qwiklabs-gcp-04-66a638fad440"
+  network_name = "example-vpc"
+  mtu          = 1460
+
+  subnets = [
+    {
+      subnet_name   = "subnet-01"
+      subnet_ip     = "10.10.10.0/24"
+      subnet_region = "us-east1"
+    },
+    {
+      subnet_name           = "subnet-02"
+      subnet_ip             = "10.10.20.0/24"
+      subnet_region         = "us-east1"
+      subnet_private_access = "true"
+      subnet_flow_logs      = "true"
+    },
+    {
+      subnet_name               = "subnet-03"
+      subnet_ip                 = "10.10.30.0/24"
+      subnet_region             = "us-east1"
+      subnet_flow_logs          = "true"
+      subnet_flow_logs_interval = "INTERVAL_10_MIN"
+      subnet_flow_logs_sampling = 0.7
+      subnet_flow_logs_metadata = "INCLUDE_ALL_METADATA"
+      subnet_flow_logs_filter   = "false"
+    }
+  ]
+}
+
+output "network_name" {
+  value       = module.test-vpc-module.network_name
+  description = "The name of the VPC being created"
+}
+
+output "network_self_link" {
+  value       = module.test-vpc-module.network_self_link
+  description = "The URI of the VPC being created"
+}
+
+output "project_id" {
+  value       = module.test-vpc-module.project_id
+  description = "VPC project id"
+}
+
+output "subnets_names" {
+  value       = module.test-vpc-module.subnets_names
+  description = "The names of the subnets being created"
+}
+
+output "subnets_ips" {
+  value       = module.test-vpc-module.subnets_ips
+  description = "The IP and CIDRs of the subnets being created"
+}
+
+output "subnets_regions" {
+  value       = module.test-vpc-module.subnets_regions
+  description = "The regions where subnets will be created"
+}
+
+output "subnets_private_access" {
+  value       = module.test-vpc-module.subnets_private_access
+  description = "Whether the subnets have Private Google Access enabled"
+}
+
+output "subnets_flow_logs" {
+  value       = module.test-vpc-module.subnets_flow_logs
+  description = "Whether VPC flow logs are enabled"
+}
+
+output "subnets_secondary_ranges" {
+  value       = module.test-vpc-module.subnets_secondary_ranges
+  description = "The secondary ranges associated with these subnets"
+}
+
+output "route_names" {
+  value       = module.test-vpc-module.route_names
+  description = "The routes associated with this VPC"
+}
+cat << 'EOF' > README.md
+# Terraform GCS Static Website Bucket Module
+
+This repository provides a custom, reusable Terraform module for provisioning Google Cloud Storage (GCS) buckets, specifically configured for static website hosting.
+
+## Why Terraform?
+Terraform's declarative syntax allows us to define and provision infrastructure in a repeatable and consistent manner. We particularly value its modularity and the extensive ecosystem of pre-built modules, which significantly accelerate our deployment workflows.
+
+## Project Structure
+- `main.tf`: Root configuration calling the custom GCS module.
+- `variables.tf`: Input variable definitions.
+- `outputs.tf`: Infrastructure output details.
+- `modules/gcs-static-website-bucket/`: The reusable module source.
+
+## Usage
+1. Initialize the project: `terraform init`
+2. Preview changes: `terraform plan`
+3. Provision resources: `terraform apply -auto-approve`
+
+## License
+Licensed under the Apache License, Version 2.0.
+EOF
+
+git add README.md && git commit -m "Add project README.md with Terraform insights" && git push
