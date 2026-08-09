@@ -1,0 +1,153 @@
+# Google Cloud Gemini Networking Lab — Commands
+
+## 1. Set Project Variables
+
+```bash
+PROJECT_ID="qwiklabs-gcp-04-267cbfa352b0"
+REGION="us-east4"
+USER=$(gcloud config get-value account 2>/dev/null)
+
+gcloud config set project "$PROJECT_ID"
+
+echo "PROJECT_ID=$PROJECT_ID"
+echo "REGION=$REGION"
+echo "USER=$USER"
+```
+
+## 2. Enable Gemini API
+
+```bash
+gcloud services enable cloudaicompanion.googleapis.com \
+  --project="$PROJECT_ID"
+```
+
+## 3. Grant Gemini IAM Roles
+
+```bash
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+  --member="user:$USER" \
+  --role="roles/cloudaicompanion.user"
+
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+  --member="user:$USER" \
+  --role="roles/serviceusage.serviceUsageViewer"
+```
+
+## 4. Verify Gemini API
+
+```bash
+gcloud services list \
+  --enabled \
+  --project="$PROJECT_ID" \
+  --filter="name:cloudaicompanion.googleapis.com" \
+  --format="value(name)"
+```
+
+Expected output:
+
+```text
+cloudaicompanion.googleapis.com
+```
+
+## 5. Create Custom VPC
+
+```bash
+gcloud compute networks create privatenet \
+  --project="$PROJECT_ID" \
+  --subnet-mode=custom \
+  --enable-ula-internal-ipv6
+```
+
+## 6. Create Dual-Stack Subnet
+
+```bash
+gcloud compute networks subnets create privatenet-subnet-us \
+  --project="$PROJECT_ID" \
+  --network=privatenet \
+  --region="$REGION" \
+  --range=10.130.0.0/20 \
+  --stack-type=IPV4_IPV6 \
+  --ipv6-access-type=INTERNAL
+```
+
+## 7. Verify VPC
+
+```bash
+gcloud compute networks describe privatenet \
+  --format="yaml(name,autoCreateSubnetworks,enableUlaInternalIpv6,internalIpv6Range)"
+```
+
+## 8. Verify Subnet
+
+```bash
+gcloud compute networks subnets describe privatenet-subnet-us \
+  --region="$REGION" \
+  --format="yaml(name,region,ipCidrRange,stackType,ipv6AccessType,ipv6CidrRange)"
+```
+
+## 9. Create IPv4 Firewall Rules
+
+```bash
+gcloud compute firewall-rules create privatenet-allow-internal \
+  --project="$PROJECT_ID" \
+  --network=privatenet \
+  --direction=INGRESS \
+  --action=ALLOW \
+  --rules=tcp:0-65535,udp:0-65535,icmp \
+  --source-ranges=10.0.0.0/8
+```
+
+```bash
+gcloud compute firewall-rules create privatenet-allow-icmp \
+  --project="$PROJECT_ID" \
+  --network=privatenet \
+  --direction=INGRESS \
+  --action=ALLOW \
+  --rules=icmp \
+  --source-ranges=0.0.0.0/0
+```
+
+## 10. Create IPv6 Firewall Rules
+
+```bash
+gcloud compute firewall-rules create privatenet-allow-ipv6-internal \
+  --project="$PROJECT_ID" \
+  --network=privatenet \
+  --direction=INGRESS \
+  --action=ALLOW \
+  --rules=tcp:0-65535,udp:0-65535,icmp \
+  --source-ipv6-ranges=fc00::/7
+```
+
+```bash
+gcloud compute firewall-rules create privatenet-allow-ipv6-icmp \
+  --project="$PROJECT_ID" \
+  --network=privatenet \
+  --direction=INGRESS \
+  --action=ALLOW \
+  --rules=icmp \
+  --source-ipv6-ranges=::/0
+```
+
+## 11. Verify Firewall Rules
+
+```bash
+gcloud compute firewall-rules list \
+  --filter="network:privatenet" \
+  --format="table(name,direction,priority,sourceRanges,sourceIpv6Ranges,allowed)"
+```
+
+## 12. Complete Verification
+
+```bash
+gcloud compute networks describe privatenet \
+  --format="yaml(name,autoCreateSubnetworks,enableUlaInternalIpv6,internalIpv6Range)"
+
+gcloud compute networks subnets describe privatenet-subnet-us \
+  --region=us-east4 \
+  --format="yaml(name,region,ipCidrRange,stackType,ipv6AccessType,ipv6CidrRange)"
+
+gcloud compute firewall-rules list \
+  --filter="network:privatenet" \
+  --format="table(name,direction,priority,sourceRanges,sourceIpv6Ranges,allowed)"
+```
