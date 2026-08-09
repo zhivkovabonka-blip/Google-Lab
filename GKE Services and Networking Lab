@@ -1,0 +1,23 @@
+# GKE Services and Networking Lab
+
+## Project
+
+**GCP Project:** `qwiklabs-gcp-01-ee5b1d4bb64c`  
+**GKE Cluster:** `standard-cluster-1`  
+**Zone:** `us-west1-c`
+
+---
+
+## Task 1 — Connect to GKE Cluster
+
+```bash
+export PROJECT_ID="qwiklabs-gcp-01-ee5b1d4bb64c"
+export my_zone="us-west1-c"
+export my_cluster="standard-cluster-1"
+
+gcloud config set project "$PROJECT_ID"
+
+source <(kubectl completion bash)
+
+gcloud container clusters get-credentials "$my_cluster" \
+  --zone "$my_zone"
